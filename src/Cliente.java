@@ -1,99 +1,97 @@
+
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
-import java.util.Scanner;
 
 public class Cliente {
 
-    private static volatile boolean conectado = true;
+    private static final int PORTA = 5000;
 
     public static void main(String[] args) {
-        Scanner teclado = new Scanner(System.in);
+        BufferedReader teclado = new BufferedReader(
+                new InputStreamReader(System.in));
 
         System.out.println("=== NexaChat - Cliente ===");
-        System.out.print("IP do servidor (Enter para localhost): ");
 
-        String endereco = teclado.nextLine().trim();
+        try {
+            System.out.print("IP do servidor (Enter para 127.0.0.1): ");
+            String ip = teclado.readLine();
 
-        if (endereco.isEmpty()) {
-            endereco = "127.0.0.1";
-        }
-
-        try (Socket socket = new Socket(endereco, 5000)) {
-
-            BufferedReader entrada = new BufferedReader(
-                    new InputStreamReader(
-                            socket.getInputStream(),
-                            StandardCharsets.UTF_8));
-
-            PrintWriter saida = new PrintWriter(
-                    socket.getOutputStream(), true,
-                    StandardCharsets.UTF_8);
-
-            System.out.println(entrada.readLine());
-
-            System.out.print("Seu nome: ");
-            String nome = teclado.nextLine().trim();
-
-            if (nome.isEmpty()) {
-                System.out.println("O nome nao pode ficar vazio.");
-                return;
+            if (ip == null || ip.trim().isEmpty()) {
+                ip = "127.0.0.1";
             }
 
-            saida.println(nome);
+            try (Socket socket = new Socket(ip.trim(), PORTA);
+                 BufferedReader entrada = new BufferedReader(
+                         new InputStreamReader(
+                                 socket.getInputStream(),
+                                 StandardCharsets.UTF_8));
+                 PrintWriter saida = new PrintWriter(
+                         socket.getOutputStream(), true,
+                         StandardCharsets.UTF_8)) {
 
-            Thread receptor = new Thread(() -> {
-                try {
-                    String mensagem;
+                String solicitacaoNome = entrada.readLine();
+                System.out.println(solicitacaoNome);
 
-                    while ((mensagem = entrada.readLine()) != null) {
-                        System.out.println(mensagem);
+                System.out.print("Seu nome: ");
+                String nome = teclado.readLine();
 
-                        if (mensagem.startsWith("ERRO:")) {
-                            conectado = false;
-                            break;
+                if (nome == null || nome.trim().isEmpty()) {
+                    System.out.println("Nome invalido.");
+                    return;
+                }
+
+                saida.println(nome.trim());
+
+                Thread receptor = new Thread(() -> {
+                    try {
+                        String mensagemServidor;
+
+                        while ((mensagemServidor = entrada.readLine()) != null) {
+                            System.out.println("\n" + mensagemServidor);
+                            System.out.print("> ");
                         }
+
+                        System.out.println("\nConexao encerrada pelo servidor.");
+
+                    } catch (IOException e) {
+                        System.out.println("\nConexao encerrada.");
+                    }
+                });
+
+                receptor.setDaemon(true);
+                receptor.start();
+
+                System.out.println("\nComandos do NexaChat:");
+                System.out.println("  Digite uma mensagem para o chat publico.");
+                System.out.println("  /msg NOME mensagem - Envia mensagem privada.");
+                System.out.println("  /sair - Sai do chat.");
+                System.out.println();
+
+                String mensagem;
+
+                while ((mensagem = teclado.readLine()) != null) {
+                    if (mensagem.trim().isEmpty()) {
+                        continue;
                     }
 
-                } catch (IOException e) {
-                    if (conectado) {
-                        System.out.println("Conexao com o servidor encerrada.");
+                    saida.println(mensagem);
+
+                    if (mensagem.trim().equalsIgnoreCase("/sair")) {
+                        break;
                     }
-                } finally {
-                    conectado = false;
-                }
-            });
 
-            receptor.start();
-
-            System.out.println("Digite suas mensagens.");
-            System.out.println("Para sair, digite /sair.\n");
-
-            while (conectado && teclado.hasNextLine()) {
-                String mensagem = teclado.nextLine();
-
-                if (mensagem.trim().isEmpty()) {
-                    continue;
-                }
-
-                saida.println(mensagem);
-
-                if (mensagem.equalsIgnoreCase("/sair")) {
-                    conectado = false;
-                    break;
+                    System.out.print("> ");
                 }
             }
 
         } catch (IOException e) {
-            System.out.println(
-                    "Nao foi possivel conectar ao servidor: "
-                            + e.getMessage());
-        } finally {
-            conectado = false;
-            System.out.println("Cliente encerrado.");
+            System.err.println(
+                    "Nao foi possivel conectar ao servidor: " + e.getMessage());
+            System.err.println("Verifique se o Servidor esta iniciado.");
         }
     }
 }
